@@ -1,0 +1,150 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  storyCredits Int      @default(0)
+  videoCredits Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  sessions    Session[]
+  children    Child[]
+  photos      Photo[]
+  stories     Story[]
+  purchases   Purchase[]
+  printOrders PrintOrder[]
+  videos      Video[]
+}
+
+model Session {
+  id        String   @id // sha256 of the cookie token
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Child {
+  id         String   @id @default(cuid())
+  userId     String
+  name       String
+  age        Int
+  pronoun    String // "he" | "she" | "they"
+  appearance String   @default("") // short free-text description used for illustrations
+  interests  String   @default("")
+  createdAt  DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  photos  Photo[]
+  stories Story[]
+
+  @@index([userId])
+}
+
+/// Child photos are private: stored encrypted outside the public folder and
+/// only ever served to their owner through an authenticated route.
+model Photo {
+  id         String   @id @default(cuid())
+  userId     String
+  childId    String
+  storageKey String
+  mimeType   String
+  sizeBytes  Int
+  createdAt  DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  child Child @relation(fields: [childId], references: [id], onDelete: Cascade)
+
+  @@index([childId])
+}
+
+model Purchase {
+  id              String    @id @default(cuid())
+  userId          String
+  packageId       String
+  amountCents     Int
+  storyCredits    Int
+  videoCredits    Int
+  status          String    @default("pending") // pending | paid | failed
+  checkoutRef     String? // Stripe checkout session id (or mock ref)
+  paidAt          DateTime?
+  createdAt       DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Story {
+  id             String   @id @default(cuid())
+  userId         String
+  childId        String
+  templateId     String
+  title          String
+  status         String   @default("draft") // draft | generating | ready | failed
+  /// JSON: slot values chosen by the customer (see lib/templates)
+  customizations String
+  /// JSON: StoryPage[] (text + illustration key per page)
+  pages          String   @default("[]")
+  error          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  child       Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
+  videos      Video[]
+  printOrders PrintOrder[]
+
+  @@index([userId])
+}
+
+model Video {
+  id         String   @id @default(cuid())
+  userId     String
+  storyId    String
+  status     String   @default("generating") // generating | ready | failed
+  storageKey String?
+  mimeType   String?
+  error      String?
+  createdAt  DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  story Story @relation(fields: [storyId], references: [id], onDelete: Cascade)
+
+  @@index([storyId])
+}
+
+model PrintOrder {
+  id            String    @id @default(cuid())
+  userId        String
+  storyId       String
+  format        String // softcover | hardcover
+  quantity      Int
+  amountCents   Int
+  status        String    @default("pending_payment") // pending_payment | paid | in_production | shipped | cancelled
+  checkoutRef   String?
+  shipName      String
+  shipLine1     String
+  shipLine2     String    @default("")
+  shipCity      String
+  shipPostal    String
+  shipCountry   String
+  paidAt        DateTime?
+  createdAt     DateTime  @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  story Story @relation(fields: [storyId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
